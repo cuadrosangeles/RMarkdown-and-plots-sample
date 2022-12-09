@@ -1,0 +1,113 @@
+---
+title: "Multidimensional Poverty Index and GDP per capita. How they work together?"
+author: "Oscar Cuadros"
+date: '2022-10-24'
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
++ In 2010, the University of Oxford and the United Nations Development Program designed the Multidimensional Poverty Index (MPI) to better understand poverty beyond classical ways to measure it, such as GDP per capita, PPP.  It is integrated by 10 deprivations indicators spanning health (nutrition and child mortality), education (years of schooling and school attendance), and standard of living (cooking fuel, sanitation, drinking water, electricity, housing, and assets). 
+
++ The MPI ranges from 0 to 1. Higher score imply higher poverty.  Health and education indicators are weighted 1/6 each, while the standard of living is weighted 1/18 each.  The global MPI identifies people as multidimensionally poor if their deprivation score is 1/3 or higher.  Nowadays, the MPI measures multidimensional poverty for 111 countries: 23 low-income, 85 middle-income, and 3 high-income.  Those countries harbor 6.1 billion people, of whom around 19% live in poverty. 
+
++ Some economic development theories suggest that poverty should shrink as GDP per capita increases.  I’ll create a graph connecting GDP per capita PPP and MPI scores to check how those variables behave.  Additionally, I’ll add a variable to measure the share of people who lives with less than $1.90 per day. I'll use the functions "geom_point" and "facet_wrap" without fixed scales to accurately appreciate the dispersion. Data comes from the World Bank database and 2022 Global Multidimensional Poverty Index. 
+
+## Key findings
+
++ 96 out of 111 countries are included in the final plot.  That’s mainly because some countries present missing values whether on GDP per capita (Afghanistan, Belize, Central African Republic, Guyana, Jamaica, Suriname, and Turkmenistan) or $1.90 per day indicator (the Democratic Republic of the Congo, Cote d’Ivoire, Gambia, Kyrgyzstan, Lao, Palestine, and Vietnam).  Cuba doesn’t present values in any. 
+
++ The MPI is negatively correlated with GDP per capita, PPP.  Countries with higher GDP per capita seems to have lower MPI score (closer to 0). However, it shows variations when analyzing poor and non-poor nations.  The correlation between MPI and GDP per capita is stronger in non-multidimensional poor countries than in emerging countries.  Furthermore, nations with a significant population living less than $1,90 a day concentrate higher MPI scores.
+
+\newpage
+
+## Coding work
+
+```{r, warning=FALSE, message=FALSE}
+library(tidyverse)
+library(readxl)
+```
+
++ Uploading the datasets 
+
+```{r}
+path <- "C:/Users/cuadr/OneDrive/Escritorio/UCHICAGO/16. AFTER HARRIS/World Bank RA/RMarkdown-and-plots"
+GDP <- read.csv(file.path(path, "GDP_2019.csv"))
+MPI <- read_excel(file.path(path, "MPI_2022.xlsx"))
+GDP_new <- GDP %>% select("Country.Name", "X2019..YR2019.")
+MPI_new <- MPI %>% select("Country", "MPI", "PPP $1.90 a day (2009-2021)", "Survey period")
+```
+
++ Renaming GDP_new to join with MPI_new
+
+```{r}
+MPI_GDP <- GDP_new %>%
+  mutate(Country.Name = recode(Country.Name, 
+                               "Congo, Dem. Rep." = "Congo (Democratic Republic of the)",
+                               "Cote d'Ivoire" = "Côte d'Ivoire",
+                               "Gambia, The" = "Gambia",
+                               "Lao PDR" = "Lao People's Democratic Republic",
+                               "Egypt, Arab Rep." = "Egypt",
+                               "Kyrgyz Republic" = "Kyrgyzstan",
+                               "Vietnam" = "Viet Nam",
+                               "Congo, Rep." = "Congo",
+                               "St. Lucia" = "Saint Lucia"))
+```
+
++ Joining datasets
+
+```{r}
+MPI_GDP <- MPI_new %>% left_join(GDP_new, c("Country" = "Country.Name"))
+```
+
++ Cleaning merged tibble and making observable NAs
+
+```{r, warning=FALSE}
+MPI_GDP_final <- MPI_GDP %>% 
+  rename(GDP_PPP = X2019..YR2019.,
+         PPP_1.90 = 'PPP $1.90 a day (2009-2021)') %>%
+  mutate(GDP_PPP = as.numeric(GDP_PPP),
+         PPP_1.90 = as.numeric(PPP_1.90),
+         Poor = ifelse(MPI >= 0.33, "Multidimensionally poor (MPI >= 0.33)", 
+                       "Not multidimensionally poor (MPI < 0.33)")) 
+```
+
++ Analyzing countries with NA on GDP PPP or $1.90 a day indicator
+
+```{r}
+MPI_GDP_final %>% 
+  mutate(NA_values = if_else(is.na(GDP_PPP) == TRUE | is.na(PPP_1.90) == TRUE, 1, 0)) %>%
+  filter(NA_values == 1) %>%
+  select(Country, GDP_PPP, PPP_1.90) %>%
+  head(15)
+```
+
++ Removing NAs  
+
+```{r, warning=FALSE}
+MPI_GDP_final <- MPI_GDP_final %>%
+  filter(!is.na(c(PPP_1.90))) %>%
+  filter(!is.na(c(GDP_PPP)))
+```
+
++ Plotting
+
+```{r}
+MPI_GDP_final %>%
+  ggplot(aes(x = GDP_PPP, y = MPI, size = PPP_1.90)) +
+  geom_point(colour = "cyan4") +
+    labs(title = "Multidimensional Poverty Index vs 2019 GDP Per Capita, PPP",
+         subtitle = "Countries measured by % population with less than $1.90 per day",
+       caption = "Source: World Bank - UNDP - University of Oxford, 2022",
+       x = "GDP per Capita, PPP (constant 2017, international $)",
+       y = "Multidimensional Poverty Index - MPI") +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5),
+        plot.caption = element_text(hjust = 0.5)) +
+  facet_wrap(vars(Poor), scales = "free", strip.position = "top", nrow = 2)
+```
+
